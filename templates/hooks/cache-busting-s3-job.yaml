@@ -2,42 +2,64 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ include "shell-app.fullname" . }}-s3-upload
+  labels:
+    app: {{ include "shell-app.name" . }}
+    chart: {{ include "shell-app.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
   annotations:
     "helm.sh/hook": post-upgrade
     "helm.sh/hook-weight": "1"
-    "helm.sh/hook-delete-policy": hook-failed
+    "helm.sh/hook-delete-policy": hook-succeeded,hook-failed
 spec:
+  activeDeadlineSeconds: 600  # 10 minute timeout
   template:
     spec:
       containers:
-        - name: upload-shell
-          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
-          command: ["/bin/sh", "-c"]
-          args:
-            - |
-              echo "Uploading shell SSR to S3"
-              aws s3 sync /app/build s3://$S3_BUCKET --delete
-              aws cloudfront create-invalidation --distribution-id "$CLOUDFRONT_DIST_ID" --paths "/*"
-          env:
-            - name: AWS_ACCESS_KEY_ID
-              valueFrom:
-                secretKeyRef:
-                  name: aws-credentials
-                  key: accessKeyId
-            - name: AWS_SECRET_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: aws-credentials
-                  key: secretAccessKey
-            - name: S3_BUCKET
-              valueFrom:
-                configMapKeyRef:
-                  name: s3-config
-                  key: bucket
-            - name: CLOUDFRONT_DIST_ID
-              valueFrom:
-                configMapKeyRef:
-                  name: s3-config
-                  key: distributionId
+      - name: upload-shell
+        image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          echo "Starting S3 sync..."
+          aws configure set default.s3.max_concurrent_requests 1
+          aws s3 sync /app/build s3://$S3_BUCKET --delete --no-progress
+          echo "Creating CloudFront invalidation..."
+          INVALIDATION_ID=$(aws cloudfront create-invalidation \
+            --distribution-id "$CLOUDFRONT_DIST_ID" \
+            --paths "/*" \
+            --query Invalidation.Id \
+            --output text)
+          echo "Invalidation ID: $INVALIDATION_ID"
+          echo "Upload completed successfully"
+        env:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.aws.secretName }}
+              key: accessKeyId
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.aws.secretName }}
+              key: secretAccessKey
+        - name: S3_BUCKET
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.aws.configMapName }}
+              key: bucket
+        - name: CLOUDFRONT_DIST_ID
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.aws.configMapName }}
+              key: distributionId
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+          requests:
+            cpu: 500m
+            memory: 512Mi
       restartPolicy: Never
-  backoffLimit: 1
+  backoffLimit: 0
