@@ -2,7 +2,11 @@ image:
   repository: hyndav/shell-app
   tag: latest
   pullPolicy: IfNotPresent
-
+  
+aws:
+  secretName: aws-credentials
+  configMapName: s3-config
+  
 service:
   enabled: true
   type: LoadBalancer
