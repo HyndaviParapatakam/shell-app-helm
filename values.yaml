@@ -1,0 +1,14 @@
+image:
+  repository: hyndav/shell-app
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  enabled: true
+  type: ClusterIP
+  port: 4000
+
+ingress:
+  enabled: false
+
+extraEnvVars: []
