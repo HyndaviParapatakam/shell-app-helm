@@ -5,7 +5,7 @@ image:
 
 service:
   enabled: true
-  type: ClusterIP
+  type: LoadBalancer
   port: 4000
 
 ingress:
